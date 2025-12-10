@@ -2,16 +2,36 @@
 HAI Facilities Data Dashboard - Streamlit Application
 Dashboard UI Revamp - Phase 1: Filter Controls for Availability Analysis
 """
+# Print to stdout IMMEDIATELY before any imports
+print("="*80, flush=True)
+print("APP.PY STARTING - BEFORE ANY IMPORTS", flush=True)
+print("="*80, flush=True)
+
 import sys
 import traceback
 
-# Import basic dependencies first (no Streamlit calls yet!)
+print("✓ sys and traceback imported", flush=True)
+
+# Import basic dependencies one by one with diagnostics
 try:
+    print("Importing streamlit...", flush=True)
     import streamlit as st
+    print("✓ streamlit imported", flush=True)
+
+    print("Importing pandas...", flush=True)
     import pandas as pd
+    print("✓ pandas imported", flush=True)
+
+    print("Importing plotly...", flush=True)
     import plotly.express as px
     import plotly.graph_objects as go
+    print("✓ plotly imported", flush=True)
+
+    print("Importing config...", flush=True)
     import config
+    print("✓ config imported", flush=True)
+
+    print("Importing database.bigquery_client...", flush=True)
     from database.bigquery_client import (
         get_bigquery_client,
         get_grouped_counts,
@@ -62,11 +82,20 @@ try:
         get_median_price_by_originator_human,
         get_median_price_by_originator_analogue
     )
+    print("✓ database.bigquery_client imported", flush=True)
+
+    print("Importing components.statistics_tree...", flush=True)
     from components.statistics_tree import render_statistics_tree
+    print("✓ components.statistics_tree imported", flush=True)
+
 except Exception as e:
-    # Critical import error - print to stderr since we can't use Streamlit yet
-    print(f"CRITICAL IMPORT ERROR: {e}", file=sys.stderr)
-    print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+    # Critical import error - print to both stdout and stderr
+    print(f"\n{'='*80}", flush=True)
+    print(f"CRITICAL IMPORT ERROR: {e}", flush=True)
+    print(f"Traceback: {traceback.format_exc()}", flush=True)
+    print(f"{'='*80}\n", flush=True)
+    print(f"CRITICAL IMPORT ERROR: {e}", file=sys.stderr, flush=True)
+    print(f"Traceback: {traceback.format_exc()}", file=sys.stderr, flush=True)
     # Try to use streamlit if it imported
     try:
         st.error(f"❌ CRITICAL IMPORT ERROR: {e}")
@@ -74,6 +103,10 @@ except Exception as e:
     except:
         pass
     raise
+
+print("\n" + "="*80, flush=True)
+print("ALL IMPORTS SUCCESSFUL - Setting up Streamlit page config", flush=True)
+print("="*80 + "\n", flush=True)
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -83,8 +116,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Now we can use Streamlit commands
-st.write("✅ DEBUG: App started, all imports successful!")
+print("✓ st.set_page_config() called successfully", flush=True)
 
 # Custom CSS for modern styling
 st.markdown("""
@@ -228,17 +260,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize BigQuery client
-st.write("🚀 DEBUG: App started, initializing BigQuery client...")
+print("Initializing BigQuery client...", flush=True)
 client = get_bigquery_client()
-st.write(f"🔍 DEBUG: Client initialization result: {client}")
 
 if not client:
     st.error("⚠️ Failed to connect to BigQuery. Please check your credentials and configuration.")
-    st.error("❌ DEBUG: client is None, stopping app")
     st.stop()
-else:
-    st.success("✅ DEBUG: BigQuery client successfully created!")
-    st.write(f"✅ DEBUG: Client project: {client.project}")
+
+print(f"✓ BigQuery client created successfully for project: {client.project}", flush=True)
 
 # Main table for Phase 1 - adl_surveys
 TABLE_NAME = config.TABLES["surveys"]

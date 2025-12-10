@@ -6,6 +6,7 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 import config
+import traceback
 
 
 @st.cache_resource
@@ -17,38 +18,30 @@ def get_bigquery_client():
     2. Service account key file (for local development)
     3. Application default credentials (gcloud auth)
     """
-    st.write("🔍 DEBUG: Starting BigQuery client initialization...")
+    print("Starting BigQuery client initialization...", flush=True)
 
     # Try to get credentials from Streamlit secrets (for cloud deployment)
     try:
-        st.write("🔍 DEBUG: Checking for Streamlit secrets...")
-        if hasattr(st, 'secrets'):
-            st.write("✅ DEBUG: st.secrets exists")
-            if 'gcp_service_account' in st.secrets:
-                st.write("✅ DEBUG: gcp_service_account found in secrets")
-                credentials = service_account.Credentials.from_service_account_info(
-                    st.secrets["gcp_service_account"]
-                )
-                project_id = st.secrets.get("GCP_PROJECT_ID", config.GCP_PROJECT_ID)
-                st.write(f"✅ DEBUG: Creating client with project_id: {project_id}")
-                client = bigquery.Client(credentials=credentials, project=project_id)
-                st.write("✅ SUCCESS: BigQuery client created from Streamlit secrets!")
-                return client
-            else:
-                st.warning("⚠️ DEBUG: gcp_service_account NOT found in st.secrets")
-        else:
-            st.warning("⚠️ DEBUG: st.secrets does NOT exist")
+        print("Checking for Streamlit secrets...", flush=True)
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            print("✓ gcp_service_account found in secrets", flush=True)
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"]
+            )
+            project_id = st.secrets.get("GCP_PROJECT_ID", config.GCP_PROJECT_ID)
+            print(f"✓ Creating client with project_id: {project_id}", flush=True)
+            client = bigquery.Client(credentials=credentials, project=project_id)
+            print("✓ BigQuery client created from Streamlit secrets!", flush=True)
+            return client
     except Exception as e:
-        st.error(f"❌ DEBUG: Streamlit secrets method failed: {str(e)}")
-        st.error(f"❌ DEBUG: Exception type: {type(e).__name__}")
-        import traceback
-        st.error(f"❌ DEBUG: Traceback: {traceback.format_exc()}")
+        print(f"⚠ Streamlit secrets method failed: {str(e)}", flush=True)
+        print(f"⚠ Traceback: {traceback.format_exc()}", flush=True)
 
     # Fallback to service account file (for local development)
     try:
-        st.write("🔍 DEBUG: Trying service account file method...")
+        print("Trying service account file method...", flush=True)
         if config.GOOGLE_APPLICATION_CREDENTIALS:
-            st.write(f"✅ DEBUG: GOOGLE_APPLICATION_CREDENTIALS: {config.GOOGLE_APPLICATION_CREDENTIALS}")
+            print(f"✓ GOOGLE_APPLICATION_CREDENTIALS: {config.GOOGLE_APPLICATION_CREDENTIALS}", flush=True)
             credentials = service_account.Credentials.from_service_account_file(
                 config.GOOGLE_APPLICATION_CREDENTIALS
             )
@@ -56,29 +49,24 @@ def get_bigquery_client():
                 credentials=credentials,
                 project=config.GCP_PROJECT_ID
             )
-            st.write("✅ SUCCESS: BigQuery client created from service account file!")
+            print("✓ BigQuery client created from service account file!", flush=True)
             return client
-        else:
-            st.write("⚠️ DEBUG: GOOGLE_APPLICATION_CREDENTIALS not set")
     except Exception as e:
-        st.error(f"❌ DEBUG: Service account file method failed: {str(e)}")
+        print(f"⚠ Service account file method failed: {str(e)}", flush=True)
 
     # Final fallback to application default credentials (gcloud auth)
     try:
-        st.write("🔍 DEBUG: Trying application default credentials...")
+        print("Trying application default credentials...", flush=True)
         from google.auth import default
         credentials, project = default()
-        st.write(f"✅ DEBUG: Got default credentials for project: {project}")
+        print(f"✓ Got default credentials for project: {project}", flush=True)
         client = bigquery.Client(credentials=credentials, project=project or config.GCP_PROJECT_ID)
-        st.write("✅ SUCCESS: BigQuery client created from default credentials!")
+        print("✓ BigQuery client created from default credentials!", flush=True)
         return client
     except Exception as e:
-        st.error(f"❌ DEBUG: Application default credentials failed: {str(e)}")
-        st.error("⚠️ ALL AUTHENTICATION METHODS FAILED")
-        st.error("Please ensure you have configured one of the following:")
-        st.error("1. Streamlit secrets (for cloud deployment)")
-        st.error("2. Service account key file in .env")
-        st.error("3. Application default credentials (gcloud auth application-default login)")
+        print(f"✗ Application default credentials failed: {str(e)}", flush=True)
+        print("✗ ALL AUTHENTICATION METHODS FAILED", flush=True)
+        st.error("⚠️ Failed to connect to BigQuery. Please check your credentials and configuration.")
         return None
 
 
