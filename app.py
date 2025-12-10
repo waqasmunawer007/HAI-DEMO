@@ -57,7 +57,7 @@ from database.bigquery_client import (
     get_median_price_by_originator_human,
     get_median_price_by_originator_analogue
 )
-from components import render_statistics_tree
+from components.statistics_tree import render_statistics_tree
 
 # Page configuration
 st.set_page_config(
