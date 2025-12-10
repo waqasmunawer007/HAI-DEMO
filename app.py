@@ -209,11 +209,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Initialize BigQuery client
+st.write("🚀 DEBUG: App started, initializing BigQuery client...")
 client = get_bigquery_client()
+st.write(f"🔍 DEBUG: Client initialization result: {client}")
 
 if not client:
     st.error("⚠️ Failed to connect to BigQuery. Please check your credentials and configuration.")
+    st.error("❌ DEBUG: client is None, stopping app")
     st.stop()
+else:
+    st.success("✅ DEBUG: BigQuery client successfully created!")
+    st.write(f"✅ DEBUG: Client project: {client.project}")
 
 # Main table for Phase 1 - adl_surveys
 TABLE_NAME = config.TABLES["surveys"]
