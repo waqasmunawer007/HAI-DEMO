@@ -2,70 +2,89 @@
 HAI Facilities Data Dashboard - Streamlit Application
 Dashboard UI Revamp - Phase 1: Filter Controls for Availability Analysis
 """
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import config
-from database.bigquery_client import (
-    get_bigquery_client,
-    get_grouped_counts,
-    get_data_collection_periods,
-    get_selected_periods_summary,
-    fetch_facility_statistics,
-    validate_facility_stats,
-    get_insulin_regions,
-    get_insulin_sectors,
-    get_insulin_availability_metrics,
-    get_insulin_by_sector_regions,
-    get_insulin_by_sector_chart_data,
-    get_insulin_by_type_regions,
-    get_insulin_by_type_sectors,
-    get_insulin_by_type_human_chart_data,
-    get_insulin_by_type_analogue_chart_data,
-    get_insulin_by_region_sectors,
-    get_insulin_by_region_human_chart_data,
-    get_insulin_by_region_analogue_chart_data,
-    get_insulin_public_levelcare_regions,
-    get_insulin_public_levelcare_human_chart_data,
-    get_insulin_public_levelcare_analogue_chart_data,
-    get_insulin_by_inn_regions,
-    get_insulin_by_inn_sectors,
-    get_insulin_by_inn_chart_data,
-    get_insulin_top_brands_sectors,
-    get_insulin_top_brands_chart_data,
-    get_insulin_by_presentation_regions,
-    get_insulin_by_presentation_sectors,
-    get_insulin_by_presentation_chart_data,
-    get_insulin_originator_biosimilar_regions,
-    get_insulin_originator_biosimilar_sectors,
-    get_insulin_human_originator_metric,
-    get_insulin_analogue_originator_metric,
-    get_insulin_human_biosimilar_metric,
-    get_insulin_analogue_biosimilar_metric,
-    get_comparator_medicine_regions,
-    get_comparator_medicine_sectors,
-    get_comparator_medicine_table_data,
-    get_price_regions,
-    get_price_sectors,
-    get_median_price_by_type,
-    get_median_price_by_type_levelcare,
-    get_price_by_inn,
-    get_price_by_brand_human,
-    get_price_by_brand_analogue,
-    get_median_price_by_presentation,
-    get_median_price_by_originator_human,
-    get_median_price_by_originator_analogue
-)
-from components.statistics_tree import render_statistics_tree
+import sys
+import traceback
 
-# Page configuration
+# Import basic dependencies first (no Streamlit calls yet!)
+try:
+    import streamlit as st
+    import pandas as pd
+    import plotly.express as px
+    import plotly.graph_objects as go
+    import config
+    from database.bigquery_client import (
+        get_bigquery_client,
+        get_grouped_counts,
+        get_data_collection_periods,
+        get_selected_periods_summary,
+        fetch_facility_statistics,
+        validate_facility_stats,
+        get_insulin_regions,
+        get_insulin_sectors,
+        get_insulin_availability_metrics,
+        get_insulin_by_sector_regions,
+        get_insulin_by_sector_chart_data,
+        get_insulin_by_type_regions,
+        get_insulin_by_type_sectors,
+        get_insulin_by_type_human_chart_data,
+        get_insulin_by_type_analogue_chart_data,
+        get_insulin_by_region_sectors,
+        get_insulin_by_region_human_chart_data,
+        get_insulin_by_region_analogue_chart_data,
+        get_insulin_public_levelcare_regions,
+        get_insulin_public_levelcare_human_chart_data,
+        get_insulin_public_levelcare_analogue_chart_data,
+        get_insulin_by_inn_regions,
+        get_insulin_by_inn_sectors,
+        get_insulin_by_inn_chart_data,
+        get_insulin_top_brands_sectors,
+        get_insulin_top_brands_chart_data,
+        get_insulin_by_presentation_regions,
+        get_insulin_by_presentation_sectors,
+        get_insulin_by_presentation_chart_data,
+        get_insulin_originator_biosimilar_regions,
+        get_insulin_originator_biosimilar_sectors,
+        get_insulin_human_originator_metric,
+        get_insulin_analogue_originator_metric,
+        get_insulin_human_biosimilar_metric,
+        get_insulin_analogue_biosimilar_metric,
+        get_comparator_medicine_regions,
+        get_comparator_medicine_sectors,
+        get_comparator_medicine_table_data,
+        get_price_regions,
+        get_price_sectors,
+        get_median_price_by_type,
+        get_median_price_by_type_levelcare,
+        get_price_by_inn,
+        get_price_by_brand_human,
+        get_price_by_brand_analogue,
+        get_median_price_by_presentation,
+        get_median_price_by_originator_human,
+        get_median_price_by_originator_analogue
+    )
+    from components.statistics_tree import render_statistics_tree
+except Exception as e:
+    # Critical import error - print to stderr since we can't use Streamlit yet
+    print(f"CRITICAL IMPORT ERROR: {e}", file=sys.stderr)
+    print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+    # Try to use streamlit if it imported
+    try:
+        st.error(f"❌ CRITICAL IMPORT ERROR: {e}")
+        st.error(f"Traceback: {traceback.format_exc()}")
+    except:
+        pass
+    raise
+
+# Page configuration - MUST be first Streamlit command
 st.set_page_config(
     page_title=config.APP_TITLE,
     page_icon=config.APP_ICON,
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Now we can use Streamlit commands
+st.write("✅ DEBUG: App started, all imports successful!")
 
 # Custom CSS for modern styling
 st.markdown("""
