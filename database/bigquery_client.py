@@ -12,11 +12,27 @@ import config
 def get_bigquery_client():
     """
     Create and cache a BigQuery client connection.
-    Uses application default credentials or service account key if provided.
+    Priority order:
+    1. Streamlit secrets (for cloud deployment)
+    2. Service account key file (for local development)
+    3. Application default credentials (gcloud auth)
     """
+    # Try to get credentials from Streamlit secrets (for cloud deployment)
+    try:
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["gcp_service_account"]
+            )
+            project_id = st.secrets.get("GCP_PROJECT_ID", config.GCP_PROJECT_ID)
+            client = bigquery.Client(credentials=credentials, project=project_id)
+            return client
+    except Exception as e:
+        # Secrets not available or invalid, will try other methods
+        pass
+
+    # Fallback to service account file (for local development)
     try:
         if config.GOOGLE_APPLICATION_CREDENTIALS:
-            # Use service account credentials
             credentials = service_account.Credentials.from_service_account_file(
                 config.GOOGLE_APPLICATION_CREDENTIALS
             )
@@ -24,13 +40,23 @@ def get_bigquery_client():
                 credentials=credentials,
                 project=config.GCP_PROJECT_ID
             )
-        else:
-            # Use application default credentials (gcloud auth)
-            client = bigquery.Client(project=config.GCP_PROJECT_ID)
+            return client
+    except Exception as e:
+        # Service account file not available or invalid, will try default credentials
+        pass
 
+    # Final fallback to application default credentials (gcloud auth)
+    try:
+        from google.auth import default
+        credentials, project = default()
+        client = bigquery.Client(credentials=credentials, project=project or config.GCP_PROJECT_ID)
         return client
     except Exception as e:
-        st.error(f"Error connecting to BigQuery: {str(e)}")
+        st.error(f"Failed to initialize BigQuery client: {str(e)}")
+        st.error("Please ensure you have configured one of the following:")
+        st.error("1. Streamlit secrets (for cloud deployment)")
+        st.error("2. Service account key file in .env")
+        st.error("3. Application default credentials (gcloud auth application-default login)")
         return None
 
 
