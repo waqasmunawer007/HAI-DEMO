@@ -3665,3 +3665,365 @@ def get_median_price_by_originator_analogue(_client, table_name, filters):
     except Exception as e:
         st.error(f"Error getting median price by originator (analogue): {str(e)}")
         return None
+
+
+# ============================
+# Phase 7: Free Insulin Functions
+# ============================
+
+@st.cache_data(ttl=600)
+def get_free_insulin_regions(_client, table_name, global_filters):
+    """
+    Get regions for free insulin analysis filter with facility counts.
+
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys)
+        global_filters (dict): Global filters (data_collection_period, country)
+
+    Returns:
+        pandas DataFrame with columns: region, facility_count
+    """
+    if not global_filters.get('data_collection_period'):
+        return None
+
+    # Build WHERE clause
+    where_clauses = ["1=1"]
+
+    # Add data collection period filter
+    periods = global_filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+
+    # Add country filter (optional)
+    if global_filters.get('country'):
+        countries_str = "', '".join(global_filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+
+    # Exclude NULL regions
+    where_clauses.append("region IS NOT NULL")
+    where_clauses.append("region != 'NULL'")
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+    SELECT
+        region,
+        COUNT(DISTINCT form_case__case_id) as facility_count
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    GROUP BY region
+    ORDER BY region DESC
+    """
+
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting free insulin regions: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def get_free_insulin_sectors(_client, table_name, global_filters, selected_regions):
+    """
+    Get sectors for free insulin analysis filter with facility counts.
+
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys)
+        global_filters (dict): Global filters (data_collection_period, country)
+        selected_regions (list): Selected regions from local Region filter
+
+    Returns:
+        pandas DataFrame with columns: sector, facility_count
+    """
+    if not global_filters.get('data_collection_period'):
+        return None
+
+    # Build WHERE clause
+    where_clauses = ["1=1"]
+
+    # Add data collection period filter
+    periods = global_filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+
+    # Add country filter (optional)
+    if global_filters.get('country'):
+        countries_str = "', '".join(global_filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+
+    # Add region filter from local selection
+    if selected_regions:
+        regions_str = "', '".join(selected_regions)
+        where_clauses.append(f"region IN ('{regions_str}')")
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+    SELECT
+        sector,
+        COUNT(DISTINCT form_case__case_id) as facility_count
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    GROUP BY sector
+    ORDER BY sector DESC
+    """
+
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting free insulin sectors: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def get_facilities_providing_free(_client, table_name, filters):
+    """
+    Get count of facilities providing insulin for free.
+
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys_repeat)
+        filters (dict): Filters (data_collection_period, country, region, sector)
+
+    Returns:
+        int: Count of distinct facilities
+    """
+    if not filters.get('data_collection_period'):
+        return None
+
+    # Build WHERE clause
+    where_clauses = ["1=1"]
+
+    # Add data collection period filter
+    periods = filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+
+    # Add country filter (optional)
+    if filters.get('country'):
+        countries_str = "', '".join(filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+
+    # Add region filter (optional)
+    if filters.get('region'):
+        regions_str = "', '".join(filters['region'])
+        where_clauses.append(f"region IN ('{regions_str}')")
+
+    # Add sector filter (optional)
+    if filters.get('sector'):
+        sectors_str = "', '".join(filters['sector'])
+        where_clauses.append(f"sector IN ('{sectors_str}')")
+
+    # Free insulin filter
+    where_clauses.append("insulin_out_of_pocket IN ('No', 'Both')")
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+    SELECT
+        COUNT(DISTINCT form_case__case_id) as facility_count
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    """
+
+    try:
+        result = _client.query(query).to_dataframe()
+        if not result.empty:
+            return int(result.iloc[0]['facility_count'])
+        return 0
+    except Exception as e:
+        st.error(f"Error getting facilities providing free: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def get_reasons_insulin_free(_client, table_name, filters):
+    """
+    Get reasons why insulin is provided for free with product counts.
+
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys_repeat)
+        filters (dict): Filters (data_collection_period, country, region, sector)
+
+    Returns:
+        pandas DataFrame with columns: insulin_free_reason, product_count
+    """
+    if not filters.get('data_collection_period'):
+        return None
+
+    # Build WHERE clause
+    where_clauses = ["1=1"]
+
+    # Add data collection period filter
+    periods = filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+
+    # Add country filter (optional)
+    if filters.get('country'):
+        countries_str = "', '".join(filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+
+    # Add region filter (optional)
+    if filters.get('region'):
+        regions_str = "', '".join(filters['region'])
+        where_clauses.append(f"region IN ('{regions_str}')")
+
+    # Add sector filter (optional)
+    if filters.get('sector'):
+        sectors_str = "', '".join(filters['sector'])
+        where_clauses.append(f"sector IN ('{sectors_str}')")
+
+    # Free insulin filter
+    where_clauses.append("insulin_out_of_pocket IN ('No', 'Both')")
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+    SELECT
+        insulin_free_reason,
+        COUNT(DISTINCT form_case__case_id) as product_count
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    GROUP BY insulin_free_reason
+    ORDER BY product_count DESC
+    """
+
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting reasons insulin free: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def get_facilities_not_full_price(_client, table_name, filters):
+    """
+    Get count of facilities not charging full price for insulin.
+
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys_repeat)
+        filters (dict): Filters (data_collection_period, country, region, sector)
+
+    Returns:
+        int: Count of distinct facilities
+    """
+    if not filters.get('data_collection_period'):
+        return None
+
+    # Build WHERE clause
+    where_clauses = ["1=1"]
+
+    # Add data collection period filter
+    periods = filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+
+    # Add country filter (optional)
+    if filters.get('country'):
+        countries_str = "', '".join(filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+
+    # Add region filter (optional)
+    if filters.get('region'):
+        regions_str = "', '".join(filters['region'])
+        where_clauses.append(f"region IN ('{regions_str}')")
+
+    # Add sector filter (optional)
+    if filters.get('sector'):
+        sectors_str = "', '".join(filters['sector'])
+        where_clauses.append(f"sector IN ('{sectors_str}')")
+
+    # Subsidised insulin filters
+    where_clauses.append("insulin_subsidised_reason IS NOT NULL")
+    where_clauses.append("insulin_subsidised_reason != '---'")
+    where_clauses.append("insulin_subsidised_reason != 'NULL'")
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+    SELECT
+        COUNT(DISTINCT form_case__case_id) as facility_count
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    """
+
+    try:
+        result = _client.query(query).to_dataframe()
+        if not result.empty:
+            return int(result.iloc[0]['facility_count'])
+        return 0
+    except Exception as e:
+        st.error(f"Error getting facilities not charging full price: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def get_reasons_not_full_price(_client, table_name, filters):
+    """
+    Get reasons why facilities are not charging full price with product counts.
+
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys_repeat)
+        filters (dict): Filters (data_collection_period, country, region, sector)
+
+    Returns:
+        pandas DataFrame with columns: insulin_subsidised_reason, product_count
+    """
+    if not filters.get('data_collection_period'):
+        return None
+
+    # Build WHERE clause
+    where_clauses = ["1=1"]
+
+    # Add data collection period filter
+    periods = filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+
+    # Add country filter (optional)
+    if filters.get('country'):
+        countries_str = "', '".join(filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+
+    # Add region filter (optional)
+    if filters.get('region'):
+        regions_str = "', '".join(filters['region'])
+        where_clauses.append(f"region IN ('{regions_str}')")
+
+    # Add sector filter (optional)
+    if filters.get('sector'):
+        sectors_str = "', '".join(filters['sector'])
+        where_clauses.append(f"sector IN ('{sectors_str}')")
+
+    # Subsidised insulin filters
+    where_clauses.append("insulin_subsidised_reason IS NOT NULL")
+    where_clauses.append("insulin_subsidised_reason != '---'")
+    where_clauses.append("insulin_subsidised_reason != 'NULL'")
+
+    where_clause = " AND ".join(where_clauses)
+
+    query = f"""
+    SELECT
+        insulin_subsidised_reason,
+        COUNT(DISTINCT form_case__case_id) as product_count
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    GROUP BY insulin_subsidised_reason
+    ORDER BY product_count DESC
+    """
+
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting reasons not full price: {str(e)}")
+        return None

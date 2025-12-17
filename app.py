@@ -80,7 +80,13 @@ try:
         get_price_by_brand_analogue,
         get_median_price_by_presentation,
         get_median_price_by_originator_human,
-        get_median_price_by_originator_analogue
+        get_median_price_by_originator_analogue,
+        get_free_insulin_regions,
+        get_free_insulin_sectors,
+        get_facilities_providing_free,
+        get_reasons_insulin_free,
+        get_facilities_not_full_price,
+        get_reasons_not_full_price
     )
     print("✓ database.bigquery_client imported", flush=True)
 
@@ -3958,6 +3964,301 @@ with tab2:
                 st.plotly_chart(fig_analogue_orig, use_container_width=True)
             else:
                 st.info("No analogue insulin originator/biosimilar data available for the selected filters")
+
+    # ====================================================================
+    # Phase 7: Where insulin is free Section
+    # ====================================================================
+
+    if st.session_state.selected_periods_price:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown('<div class="section-header"><h3>Where insulin is free</h3></div>', unsafe_allow_html=True)
+
+        # Local filters for free insulin analysis
+        st.markdown("<br>", unsafe_allow_html=True)
+        col1_free, col2_free = st.columns(2)
+
+        # Region filter (Column 1)
+        with col1_free:
+            st.markdown("**Region**")
+            with st.spinner("Loading regions..."):
+                # Build global filters dict from session state
+                global_filters_free = {
+                    'data_collection_period': st.session_state.selected_periods_price,
+                    'country': st.session_state.selected_countries_price if st.session_state.selected_countries_price else None
+                }
+
+                region_df_free = get_free_insulin_regions(client, config.TABLES["surveys"], global_filters_free)
+
+                if region_df_free is not None and not region_df_free.empty:
+                    # Build region options with counts
+                    region_data_free = []
+                    for _, row in region_df_free.iterrows():
+                        region = row['region']
+                        count = row['facility_count']
+                        region_data_free.append((region, count))
+
+                    total_regions_free = len(region_data_free)
+
+                    # Initialize checkboxes in session state
+                    for region, count in region_data_free:
+                        checkbox_key = f"price_free_region_{region}"
+                        if checkbox_key not in st.session_state:
+                            st.session_state[checkbox_key] = True
+
+                    # Count selected items
+                    selected_count_free = sum(
+                        1 for region, _ in region_data_free
+                        if st.session_state.get(f"price_free_region_{region}", True)
+                    )
+                    excluded_count_free = total_regions_free - selected_count_free
+
+                    # Create expander with selection summary
+                    with st.expander(
+                        f"Select Regions ({selected_count_free}/{total_regions_free} selected)",
+                        expanded=False
+                    ):
+                        if excluded_count_free > 0:
+                            st.caption(f"🚫 {excluded_count_free} item{'s' if excluded_count_free != 1 else ''} excluded")
+
+                        # Create checkboxes
+                        local_regions_free = []
+                        for region, count in region_data_free:
+                            checkbox_key = f"price_free_region_{region}"
+                            is_checked = st.checkbox(
+                                f"{region} ({count:,})",
+                                value=st.session_state.get(checkbox_key, True),
+                                key=checkbox_key
+                            )
+                            if is_checked:
+                                local_regions_free.append(region)
+                else:
+                    local_regions_free = []
+                    st.info("No region data available")
+
+        # Sector filter (Column 2)
+        with col2_free:
+            st.markdown("**Sector**")
+            with st.spinner("Loading sectors..."):
+                sector_df_free = get_free_insulin_sectors(client, config.TABLES["surveys"], global_filters_free, local_regions_free)
+
+                if sector_df_free is not None and not sector_df_free.empty:
+                    # Build sector options with counts
+                    sector_data_free = []
+                    for _, row in sector_df_free.iterrows():
+                        sector = row['sector']
+                        count = row['facility_count']
+                        sector_data_free.append((sector, count))
+
+                    total_sectors_free = len(sector_data_free)
+
+                    # Initialize checkboxes in session state
+                    for sector, count in sector_data_free:
+                        checkbox_key = f"price_free_sector_{sector}"
+                        if checkbox_key not in st.session_state:
+                            st.session_state[checkbox_key] = True
+
+                    # Count selected items
+                    selected_count_free_sec = sum(
+                        1 for sector, _ in sector_data_free
+                        if st.session_state.get(f"price_free_sector_{sector}", True)
+                    )
+                    excluded_count_free_sec = total_sectors_free - selected_count_free_sec
+
+                    # Create expander with selection summary
+                    with st.expander(
+                        f"Select Sectors ({selected_count_free_sec}/{total_sectors_free} selected)",
+                        expanded=False
+                    ):
+                        if excluded_count_free_sec > 0:
+                            st.caption(f"🚫 {excluded_count_free_sec} item{'s' if excluded_count_free_sec != 1 else ''} excluded")
+
+                        # Create checkboxes
+                        local_sectors_free = []
+                        for sector, count in sector_data_free:
+                            checkbox_key = f"price_free_sector_{sector}"
+                            is_checked = st.checkbox(
+                                f"{sector} ({count:,})",
+                                value=st.session_state.get(checkbox_key, True),
+                                key=checkbox_key
+                            )
+                            if is_checked:
+                                local_sectors_free.append(sector)
+                else:
+                    local_sectors_free = []
+                    st.info("No sector data available")
+
+        # Row 1: Facilities providing for free
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_scorecard1, col_pie1 = st.columns(2)
+
+        # Scorecard 1: Facilities providing for free (Left Column)
+        with col_scorecard1:
+            st.markdown("#### Facilities providing for free")
+
+            with st.spinner("Loading facilities providing free data..."):
+                # Prepare filters
+                free_filters = {
+                    'data_collection_period': st.session_state.selected_periods_price,
+                    'country': st.session_state.selected_countries_price if st.session_state.selected_countries_price else None,
+                    'region': local_regions_free if local_regions_free else None,
+                    'sector': local_sectors_free if local_sectors_free else None
+                }
+
+                facilities_free_count = get_facilities_providing_free(client, config.TABLES["surveys_repeat"], free_filters)
+
+                if facilities_free_count is not None:
+                    # Display scorecard using custom HTML
+                    scorecard_html = f"""
+                    <div class="metric-card" style="padding: 20px; background: white; border-radius: 8px;
+                         border-left: 4px solid #667eea; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div style="color: #666; font-size: 14px; margin-bottom: 8px;">Facilities(n)</div>
+                        <div style="color: #1f77b4; font-size: 32px; font-weight: bold;">{facilities_free_count:,}</div>
+                    </div>
+                    """
+                    st.markdown(scorecard_html, unsafe_allow_html=True)
+                else:
+                    st.info("No data available for facilities providing free")
+
+        # Pie Chart 1: Reasons insulin provided for free (Right Column)
+        with col_pie1:
+            st.markdown("#### Reasons insulin provided for free")
+            st.markdown('<p style="font-size: 12px; color: #666;">Hover over a slice to see the Reported Products(n) making up the percentage</p>',
+                        unsafe_allow_html=True)
+
+            with st.spinner("Loading reasons for free insulin..."):
+                reasons_free_df = get_reasons_insulin_free(client, config.TABLES["surveys_repeat"], free_filters)
+
+                if reasons_free_df is not None and not reasons_free_df.empty:
+                    # Calculate percentages
+                    total_products = reasons_free_df['product_count'].sum()
+                    reasons_free_df['percentage'] = (reasons_free_df['product_count'] / total_products * 100).round(2)
+
+                    # Create pie chart
+                    fig_reasons_free = px.pie(
+                        reasons_free_df,
+                        values='percentage',
+                        names='insulin_free_reason',
+                        title='',
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
+
+                    # Update traces for better hover info
+                    fig_reasons_free.update_traces(
+                        textposition='inside',
+                        textinfo='percent',
+                        hovertemplate='<b>%{label}</b><br>' +
+                                      'Percentage: %{value:.1f}%<br>' +
+                                      'Reported Products(n): %{customdata[0]:,}<br>' +
+                                      '<extra></extra>',
+                        customdata=reasons_free_df[['product_count']].values
+                    )
+
+                    # Update layout
+                    fig_reasons_free.update_layout(
+                        showlegend=True,
+                        legend=dict(
+                            orientation="v",
+                            yanchor="middle",
+                            y=0.5,
+                            xanchor="left",
+                            x=1.05
+                        ),
+                        height=400,
+                        margin=dict(t=20, b=20, l=20, r=120)
+                    )
+
+                    st.plotly_chart(fig_reasons_free, use_container_width=True)
+                else:
+                    st.info("No data available for reasons insulin provided for free")
+
+        # Row 2: Facilities not charging full price
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_scorecard2, col_pie2 = st.columns(2)
+
+        # Scorecard 2: Facilities not charging full price (Left Column)
+        with col_scorecard2:
+            st.markdown("#### Facilities not charging full price")
+
+            with st.spinner("Loading facilities not charging full price data..."):
+                facilities_subsidised_count = get_facilities_not_full_price(client, config.TABLES["surveys_repeat"], free_filters)
+
+                if facilities_subsidised_count is not None:
+                    # Display scorecard using custom HTML
+                    scorecard_html = f"""
+                    <div class="metric-card" style="padding: 20px; background: white; border-radius: 8px;
+                         border-left: 4px solid #667eea; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div style="color: #666; font-size: 14px; margin-bottom: 8px;">Facilities(n)</div>
+                        <div style="color: #1f77b4; font-size: 32px; font-weight: bold;">{facilities_subsidised_count:,}</div>
+                    </div>
+                    """
+                    st.markdown(scorecard_html, unsafe_allow_html=True)
+                else:
+                    st.info("No data available for facilities not charging full price")
+
+        # Pie Chart 2: Reasons for not charging full price (Right Column)
+        with col_pie2:
+            st.markdown("#### Reasons for not charging full price")
+            st.markdown('<p style="font-size: 12px; color: #666;">Hover over a slice to see the Reported Products(n) making up the percentage</p>',
+                        unsafe_allow_html=True)
+
+            with st.spinner("Loading reasons for not charging full price..."):
+                reasons_subsidised_df = get_reasons_not_full_price(client, config.TABLES["surveys_repeat"], free_filters)
+
+                if reasons_subsidised_df is not None and not reasons_subsidised_df.empty:
+                    # Calculate percentages
+                    total_products = reasons_subsidised_df['product_count'].sum()
+                    reasons_subsidised_df['percentage'] = (reasons_subsidised_df['product_count'] / total_products * 100).round(2)
+
+                    # Create pie chart
+                    fig_reasons_subsidised = px.pie(
+                        reasons_subsidised_df,
+                        values='percentage',
+                        names='insulin_subsidised_reason',
+                        title='',
+                        color_discrete_sequence=px.colors.qualitative.Pastel
+                    )
+
+                    # Update traces for better hover info
+                    fig_reasons_subsidised.update_traces(
+                        textposition='inside',
+                        textinfo='percent',
+                        hovertemplate='<b>%{label}</b><br>' +
+                                      'Percentage: %{value:.1f}%<br>' +
+                                      'Reported Products(n): %{customdata[0]:,}<br>' +
+                                      '<extra></extra>',
+                        customdata=reasons_subsidised_df[['product_count']].values
+                    )
+
+                    # Update layout
+                    fig_reasons_subsidised.update_layout(
+                        showlegend=True,
+                        legend=dict(
+                            orientation="v",
+                            yanchor="middle",
+                            y=0.5,
+                            xanchor="left",
+                            x=1.05
+                        ),
+                        height=400,
+                        margin=dict(t=20, b=20, l=20, r=120)
+                    )
+
+                    st.plotly_chart(fig_reasons_subsidised, use_container_width=True)
+                else:
+                    st.info("No data available for reasons not charging full price")
+
+        # Note message
+        st.markdown("<br>", unsafe_allow_html=True)
+        note_html = """
+        <div class="info-box" style="padding: 15px; background: #e3f2fd; border-left: 4px solid #2196f3;
+             border-radius: 4px; margin-top: 15px;">
+            <p style="margin: 0; color: #1565c0; font-size: 14px;">
+                <strong>Note:</strong> This includes facilities that report providing insulin for free at least
+                some people, depending on the national policies, for example insurance or donation schemes.
+            </p>
+        </div>
+        """
+        st.markdown(note_html, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
