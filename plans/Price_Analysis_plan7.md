@@ -47,7 +47,8 @@ This inlcudes facilties that report providing insulin for free at least some peo
 - Table: adl_surveys_repeat
 - Metric: COUNT_DISTINCT(form_case__case_id)
 (Reported products(n) making up the percentage)
-- Filter:INCLUDE insulin_out_of_pocket IN (No, Both)
+- Filter:INCLUDE insulin_out_of_pocket IN (No, Both) AND
+EXCLUDE  insulin_free_reason EQUALS  "---" 
 - Group by insulin_free_reason
 - Sort:ORDER BY COUNT_DISTINCT(form_case__case_id) DESC
 

@@ -3881,6 +3881,9 @@ def get_reasons_insulin_free(_client, table_name, filters):
 
     # Free insulin filter
     where_clauses.append("insulin_out_of_pocket IN ('No', 'Both')")
+    
+    # Exclude "---" values from insulin_free_reason
+    where_clauses.append("insulin_free_reason != '---'")
 
     where_clause = " AND ".join(where_clauses)
 
