@@ -190,10 +190,12 @@ def get_grouped_counts(_client, table_name, group_by_column, sort_desc=True):
     """
     order_clause = "DESC" if sort_desc else "ASC"
     query = f"""
-        SELECT 
+        SELECT
             {group_by_column},
             COUNT(DISTINCT form_case__case_id) as survey_count
         FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+        WHERE survey_date IS NOT NULL
+            AND survey_date < CURRENT_DATE()
         GROUP BY {group_by_column}
         ORDER BY survey_count {order_clause}
     """
@@ -228,6 +230,8 @@ def get_data_collection_periods(_client, table_name):
             AND data_collection_period NOT LIKE '%select%'
             AND TRIM(data_collection_period) != ''
             AND LENGTH(data_collection_period) > 1
+            AND survey_date IS NOT NULL
+            AND survey_date < CURRENT_DATE()
         GROUP BY data_collection_period
         ORDER BY data_collection_period DESC
     """
@@ -260,7 +264,7 @@ def get_selected_periods_summary(_client, table_name, selected_periods):
     periods_str = "', '".join(selected_periods)
     
     query = f"""
-        SELECT 
+        SELECT
             data_collection_period,
             MIN(survey_date) as first_survey_date,
             MAX(survey_date) as last_survey_date,
@@ -268,6 +272,8 @@ def get_selected_periods_summary(_client, table_name, selected_periods):
         FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
         WHERE data_collection_period IN ('{periods_str}')
             AND data_collection_period != 'Click here to select...'
+            AND survey_date IS NOT NULL
+            AND survey_date < CURRENT_DATE()
         GROUP BY data_collection_period
         ORDER BY data_collection_period DESC
     """
@@ -370,6 +376,10 @@ def fetch_facility_statistics(_client, table_name, filters):
     if filters.get('region'):
         regions_str = "', '".join(filters['region'])
         where_clauses.append(f"region IN ('{regions_str}')")
+    
+    # Add date validation filters to exclude invalid records
+    where_clauses.append("survey_date IS NOT NULL")
+    where_clauses.append("survey_date < CURRENT_DATE()")
     
     where_clause = " AND ".join(where_clauses)
     

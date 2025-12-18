@@ -373,30 +373,59 @@ with tab1:
                 country_df = get_grouped_counts(client, TABLE_NAME, "country")
 
                 if country_df is not None and not country_df.empty:
-                    # Create options with count badges
-                    country_options = []
+                    # Build country data (exclude Test Survey)
+                    country_data = []
                     for _, row in country_df.iterrows():
                         country = row['country']
                         count = row['survey_count']
-                        country_options.append(f"{country} ({count:,})")
+                        # Exclude Test Survey
+                        if country != 'Test Survey':
+                            country_data.append((country, count))
 
-                    selected_countries_display = st.multiselect(
-                        "Select countries",
-                        options=country_options,
-                        default=[],
-                        help="Filter by country - showing survey count per country",
-                        label_visibility="collapsed"
+                    total_countries = len(country_data)
+
+                    # Initialize checkboxes in session state (all selected by default)
+                    for country, count in country_data:
+                        checkbox_key = f"global_country_{country}"
+                        if checkbox_key not in st.session_state:
+                            st.session_state[checkbox_key] = True
+
+                    # Count selected items from session state
+                    selected_count = sum(
+                        1 for country, _ in country_data
+                        if st.session_state.get(f"global_country_{country}", True)
                     )
+                    excluded_count = total_countries - selected_count
 
-                    # Extract actual country names from display format
-                    st.session_state.selected_countries = [
-                        opt.split(' (')[0] for opt in selected_countries_display
-                    ]
+                    # Create expander with selection summary
+                    with st.expander(
+                        f"Select Countries ({selected_count}/{total_countries} selected)",
+                        expanded=False
+                    ):
+                        # Display excluded count inside expander
+                        if excluded_count > 0:
+                            st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
 
-                    # Show selection summary
-                    if st.session_state.selected_countries:
-                        st.success(f"✓ {len(st.session_state.selected_countries)} country(ies) selected")
+                        # Create checkboxes for each country
+                        selected_countries = []
+                        for country, count in country_data:
+                            checkbox_key = f"global_country_{country}"
+
+                            # Display checkbox
+                            is_checked = st.checkbox(
+                                f"{country} ({count:,})",
+                                value=st.session_state.get(checkbox_key, True),
+                                key=checkbox_key
+                            )
+
+                            # Add to selected list if checked
+                            if is_checked:
+                                selected_countries.append(country)
+
+                        # Update session state with selected countries
+                        st.session_state.selected_countries = selected_countries
                 else:
+                    st.session_state.selected_countries = []
                     st.warning("No country data available")
             except Exception as e:
                 st.error(f"Error loading countries: {str(e)}")
@@ -409,30 +438,57 @@ with tab1:
                 region_df = get_grouped_counts(client, TABLE_NAME, "region")
 
                 if region_df is not None and not region_df.empty:
-                    # Create options with count badges
-                    region_options = []
+                    # Build region data
+                    region_data = []
                     for _, row in region_df.iterrows():
                         region = row['region']
                         count = row['survey_count']
-                        region_options.append(f"{region} ({count:,})")
+                        region_data.append((region, count))
 
-                    selected_regions_display = st.multiselect(
-                        "Select regions",
-                        options=region_options,
-                        default=[],
-                        help="Filter by region - showing survey count per region",
-                        label_visibility="collapsed"
+                    total_regions = len(region_data)
+
+                    # Initialize checkboxes in session state (all selected by default)
+                    for region, count in region_data:
+                        checkbox_key = f"global_region_{region}"
+                        if checkbox_key not in st.session_state:
+                            st.session_state[checkbox_key] = True
+
+                    # Count selected items from session state
+                    selected_count = sum(
+                        1 for region, _ in region_data
+                        if st.session_state.get(f"global_region_{region}", True)
                     )
+                    excluded_count = total_regions - selected_count
 
-                    # Extract actual region names from display format
-                    st.session_state.selected_regions = [
-                        opt.split(' (')[0] for opt in selected_regions_display
-                    ]
+                    # Create expander with selection summary
+                    with st.expander(
+                        f"Select Regions ({selected_count}/{total_regions} selected)",
+                        expanded=False
+                    ):
+                        # Display excluded count inside expander
+                        if excluded_count > 0:
+                            st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
 
-                    # Show selection summary
-                    if st.session_state.selected_regions:
-                        st.success(f"✓ {len(st.session_state.selected_regions)} region(s) selected")
+                        # Create checkboxes for each region
+                        selected_regions = []
+                        for region, count in region_data:
+                            checkbox_key = f"global_region_{region}"
+
+                            # Display checkbox
+                            is_checked = st.checkbox(
+                                f"{region} ({count:,})",
+                                value=st.session_state.get(checkbox_key, True),
+                                key=checkbox_key
+                            )
+
+                            # Add to selected list if checked
+                            if is_checked:
+                                selected_regions.append(region)
+
+                        # Update session state with selected regions
+                        st.session_state.selected_regions = selected_regions
                 else:
+                    st.session_state.selected_regions = []
                     st.warning("No region data available")
             except Exception as e:
                 st.error(f"Error loading regions: {str(e)}")

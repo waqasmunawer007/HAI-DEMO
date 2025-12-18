@@ -35,6 +35,8 @@ Build the first tab using a phased approach. This plan covers Phase 1 of the Ava
 - **Metric:** `COUNT_DISTINCT(form_case__case_id)`
 - **Sort:** `COUNT(DISTINCT form_case__case_id)`
 - **Order:** `DESC`
+`Date Range dimension`: `survey_date`
+
 
 **Implementation Notes:**
 - Display countries ranked by survey volume
