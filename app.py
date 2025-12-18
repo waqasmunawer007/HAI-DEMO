@@ -35,6 +35,9 @@ try:
     from database.bigquery_client import (
         get_bigquery_client,
         get_grouped_counts,
+        get_country_counts_by_period,
+        get_region_counts_by_period,
+        get_sector_counts_by_period,
         get_data_collection_periods,
         get_selected_periods_summary,
         fetch_facility_statistics,
@@ -291,6 +294,8 @@ if 'selected_countries_price' not in st.session_state:
     st.session_state.selected_countries_price = []
 if 'selected_regions_price' not in st.session_state:
     st.session_state.selected_regions_price = []
+if 'selected_sectors_price' not in st.session_state:
+    st.session_state.selected_sectors_price = []
 if 'selected_periods_price' not in st.session_state:
     st.session_state.selected_periods_price = []
 
@@ -473,139 +478,11 @@ with tab1:
         except Exception as e:
             st.error(f"Debug query error: {str(e)}")
 
-    # Create three columns for the filter dropdowns
+    # Create three columns for the filter dropdowns (reordered: Period, Country, Region)
     col1, col2, col3 = st.columns(3)
 
-    # Filter 1: Country Dropdown
+    # Filter 1: Data Collection Period Dropdown (Searchable) - NOW IN COL1
     with col1:
-        st.markdown("#### Country")
-        with st.spinner("Loading countries..."):
-            try:
-                country_df = get_grouped_counts(client, TABLE_NAME, "country")
-
-                if country_df is not None and not country_df.empty:
-                    # Build country data (exclude Test Survey)
-                    country_data = []
-                    for _, row in country_df.iterrows():
-                        country = row['country']
-                        count = row['survey_count']
-                        # Exclude Test Survey
-                        if country != 'Test Survey':
-                            country_data.append((country, count))
-
-                    total_countries = len(country_data)
-
-                    # Initialize checkboxes in session state (all selected by default)
-                    for country, count in country_data:
-                        checkbox_key = f"global_country_{country}"
-                        if checkbox_key not in st.session_state:
-                            st.session_state[checkbox_key] = True
-
-                    # Count selected items from session state
-                    selected_count = sum(
-                        1 for country, _ in country_data
-                        if st.session_state.get(f"global_country_{country}", True)
-                    )
-                    excluded_count = total_countries - selected_count
-
-                    # Create expander with selection summary
-                    with st.expander(
-                        f"Select Countries ({selected_count}/{total_countries} selected)",
-                        expanded=False
-                    ):
-                        # Display excluded count inside expander
-                        if excluded_count > 0:
-                            st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
-
-                        # Create checkboxes for each country
-                        selected_countries = []
-                        for country, count in country_data:
-                            checkbox_key = f"global_country_{country}"
-
-                            # Display checkbox
-                            is_checked = st.checkbox(
-                                f"{country} ({count:,})",
-                                value=st.session_state.get(checkbox_key, True),
-                                key=checkbox_key
-                            )
-
-                            # Add to selected list if checked
-                            if is_checked:
-                                selected_countries.append(country)
-
-                        # Update session state with selected countries
-                        st.session_state.selected_countries = selected_countries
-                else:
-                    st.session_state.selected_countries = []
-                    st.warning("No country data available")
-            except Exception as e:
-                st.error(f"Error loading countries: {str(e)}")
-
-    # Filter 2: Region Dropdown
-    with col2:
-        st.markdown("#### Region")
-        with st.spinner("Loading regions..."):
-            try:
-                region_df = get_grouped_counts(client, TABLE_NAME, "region")
-
-                if region_df is not None and not region_df.empty:
-                    # Build region data
-                    region_data = []
-                    for _, row in region_df.iterrows():
-                        region = row['region']
-                        count = row['survey_count']
-                        region_data.append((region, count))
-
-                    total_regions = len(region_data)
-
-                    # Initialize checkboxes in session state (all selected by default)
-                    for region, count in region_data:
-                        checkbox_key = f"global_region_{region}"
-                        if checkbox_key not in st.session_state:
-                            st.session_state[checkbox_key] = True
-
-                    # Count selected items from session state
-                    selected_count = sum(
-                        1 for region, _ in region_data
-                        if st.session_state.get(f"global_region_{region}", True)
-                    )
-                    excluded_count = total_regions - selected_count
-
-                    # Create expander with selection summary
-                    with st.expander(
-                        f"Select Regions ({selected_count}/{total_regions} selected)",
-                        expanded=False
-                    ):
-                        # Display excluded count inside expander
-                        if excluded_count > 0:
-                            st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
-
-                        # Create checkboxes for each region
-                        selected_regions = []
-                        for region, count in region_data:
-                            checkbox_key = f"global_region_{region}"
-
-                            # Display checkbox
-                            is_checked = st.checkbox(
-                                f"{region} ({count:,})",
-                                value=st.session_state.get(checkbox_key, True),
-                                key=checkbox_key
-                            )
-
-                            # Add to selected list if checked
-                            if is_checked:
-                                selected_regions.append(region)
-
-                        # Update session state with selected regions
-                        st.session_state.selected_regions = selected_regions
-                else:
-                    st.session_state.selected_regions = []
-                    st.warning("No region data available")
-            except Exception as e:
-                st.error(f"Error loading regions: {str(e)}")
-
-    # Filter 3: Data Collection Period Dropdown (Searchable)
-    with col3:
         st.markdown("#### Data Collection Period")
         with st.spinner("Loading data collection periods..."):
             try:
@@ -641,6 +518,166 @@ with tab1:
             except Exception as e:
                 st.error(f"Error loading data collection periods: {str(e)}")
 
+    # Filter 2: Country Dropdown - NOW IN COL2 AND DEPENDS ON SELECTED PERIODS
+    with col2:
+        st.markdown("#### Country")
+
+        # Check if periods are selected
+        if not st.session_state.selected_periods:
+            st.info("👈 Select a Data Collection Period first")
+            st.session_state.selected_countries = []
+        else:
+            with st.spinner("Loading countries..."):
+                try:
+                    # Use period-filtered country counts
+                    country_df = get_country_counts_by_period(
+                        client,
+                        TABLE_NAME,
+                        st.session_state.selected_periods
+                    )
+
+                    if country_df is not None and not country_df.empty:
+                        # Build country data (exclude Test Survey)
+                        country_data = []
+                        for _, row in country_df.iterrows():
+                            country = row['country']
+                            count = row['survey_count']
+                            # Exclude Test Survey
+                            if country != 'Test Survey':
+                                country_data.append((country, count))
+
+                        total_countries = len(country_data)
+
+                        if total_countries > 0:
+                            # Initialize checkboxes in session state (all selected by default)
+                            for country, count in country_data:
+                                checkbox_key = f"global_country_{country}"
+                                if checkbox_key not in st.session_state:
+                                    st.session_state[checkbox_key] = True
+
+                            # Count selected items from session state
+                            selected_count = sum(
+                                1 for country, _ in country_data
+                                if st.session_state.get(f"global_country_{country}", True)
+                            )
+                            excluded_count = total_countries - selected_count
+
+                            # Create expander with selection summary
+                            with st.expander(
+                                f"Select Countries ({selected_count}/{total_countries} selected)",
+                                expanded=False
+                            ):
+                                # Display excluded count inside expander
+                                if excluded_count > 0:
+                                    st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
+
+                                # Create checkboxes for each country
+                                selected_countries = []
+                                for country, count in country_data:
+                                    checkbox_key = f"global_country_{country}"
+
+                                    # Display checkbox
+                                    is_checked = st.checkbox(
+                                        f"{country} ({count:,})",
+                                        value=st.session_state.get(checkbox_key, True),
+                                        key=checkbox_key
+                                    )
+
+                                    # Add to selected list if checked
+                                    if is_checked:
+                                        selected_countries.append(country)
+
+                                # Update session state with selected countries
+                                st.session_state.selected_countries = selected_countries
+                        else:
+                            st.session_state.selected_countries = []
+                            st.info("No countries found for selected periods")
+                    else:
+                        st.session_state.selected_countries = []
+                        st.info("No country data available for selected periods")
+                except Exception as e:
+                    st.error(f"Error loading countries: {str(e)}")
+                    st.session_state.selected_countries = []
+
+    # Filter 3: Region Dropdown - NOW IN COL3 AND DEPENDS ON SELECTED PERIODS
+    with col3:
+        st.markdown("#### Region")
+
+        # Check if periods are selected
+        if not st.session_state.selected_periods:
+            st.info("👈 Select a Data Collection Period first")
+            st.session_state.selected_regions = []
+        else:
+            with st.spinner("Loading regions..."):
+                try:
+                    # Use period-filtered region counts
+                    region_df = get_region_counts_by_period(
+                        client,
+                        TABLE_NAME,
+                        st.session_state.selected_periods
+                    )
+
+                    if region_df is not None and not region_df.empty:
+                        # Build region data
+                        region_data = []
+                        for _, row in region_df.iterrows():
+                            region = row['region']
+                            count = row['survey_count']
+                            region_data.append((region, count))
+
+                        total_regions = len(region_data)
+
+                        if total_regions > 0:
+                            # Initialize checkboxes in session state (all selected by default)
+                            for region, count in region_data:
+                                checkbox_key = f"global_region_{region}"
+                                if checkbox_key not in st.session_state:
+                                    st.session_state[checkbox_key] = True
+
+                            # Count selected items from session state
+                            selected_count = sum(
+                                1 for region, _ in region_data
+                                if st.session_state.get(f"global_region_{region}", True)
+                            )
+                            excluded_count = total_regions - selected_count
+
+                            # Create expander with selection summary
+                            with st.expander(
+                                f"Select Regions ({selected_count}/{total_regions} selected)",
+                                expanded=False
+                            ):
+                                # Display excluded count inside expander
+                                if excluded_count > 0:
+                                    st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
+
+                                # Create checkboxes for each region
+                                selected_regions = []
+                                for region, count in region_data:
+                                    checkbox_key = f"global_region_{region}"
+
+                                    # Display checkbox
+                                    is_checked = st.checkbox(
+                                        f"{region} ({count:,})",
+                                        value=st.session_state.get(checkbox_key, True),
+                                        key=checkbox_key
+                                    )
+
+                                    # Add to selected list if checked
+                                    if is_checked:
+                                        selected_regions.append(region)
+
+                                # Update session state with selected regions
+                                st.session_state.selected_regions = selected_regions
+                        else:
+                            st.session_state.selected_regions = []
+                            st.info("No regions found for selected periods")
+                    else:
+                        st.session_state.selected_regions = []
+                        st.info("No region data available for selected periods")
+                except Exception as e:
+                    st.error(f"Error loading regions: {str(e)}")
+                    st.session_state.selected_regions = []
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Selected Data Collection Period Summary Table
@@ -652,7 +689,9 @@ with tab1:
                 summary_df = get_selected_periods_summary(
                     client,
                     TABLE_NAME,
-                    st.session_state.selected_periods
+                    st.session_state.selected_periods,
+                    st.session_state.selected_countries if st.session_state.selected_countries else None,
+                    st.session_state.selected_regions if st.session_state.selected_regions else None
                 )
 
                 if summary_df is not None and not summary_df.empty:
@@ -2816,111 +2855,43 @@ with tab2:
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown('<div class="section-header"><h3>Data Selectors</h3></div>', unsafe_allow_html=True)
 
-    # Create three columns for the filter dropdowns
+    # Create three columns for the filter dropdowns (reordered: Period, Country, Region)
     col1, col2, col3 = st.columns(3)
 
-    # Filter 1: Country Dropdown
+    # Filter 1: Data Collection Period Dropdown (Searchable) - NOW IN COL1
     with col1:
-        st.markdown("#### Country")
-        with st.spinner("Loading countries..."):
-            try:
-                country_df = get_grouped_counts(client, TABLE_NAME, "country")
-
-                if country_df is not None and not country_df.empty:
-                    # Create options with count badges
-                    country_options = []
-                    for _, row in country_df.iterrows():
-                        country = row['country']
-                        count = row['survey_count']
-                        country_options.append(f"{country} ({count:,})")
-
-                    selected_countries_display = st.multiselect(
-                        "Select countries",
-                        options=country_options,
-                        default=[],
-                        help="Filter by country - showing survey count per country",
-                        label_visibility="collapsed",
-                        key="price_country_filter"
-                    )
-
-                    # Extract actual country names from display format
-                    st.session_state.selected_countries_price = [
-                        opt.split(' (')[0] for opt in selected_countries_display
-                    ]
-
-                    # Show selection summary
-                    if st.session_state.selected_countries_price:
-                        st.success(f"✓ {len(st.session_state.selected_countries_price)} country(ies) selected")
-                else:
-                    st.warning("No country data available")
-            except Exception as e:
-                st.error(f"Error loading countries: {str(e)}")
-
-    # Filter 2: Region Dropdown
-    with col2:
-        st.markdown("#### Region")
-        with st.spinner("Loading regions..."):
-            try:
-                region_df = get_grouped_counts(client, TABLE_NAME, "region")
-
-                if region_df is not None and not region_df.empty:
-                    # Create options with count badges
-                    region_options = []
-                    for _, row in region_df.iterrows():
-                        region = row['region']
-                        count = row['survey_count']
-                        region_options.append(f"{region} ({count:,})")
-
-                    selected_regions_display = st.multiselect(
-                        "Select regions",
-                        options=region_options,
-                        default=[],
-                        help="Filter by region - showing survey count per region",
-                        label_visibility="collapsed",
-                        key="price_region_filter"
-                    )
-
-                    # Extract actual region names from display format
-                    st.session_state.selected_regions_price = [
-                        opt.split(' (')[0] for opt in selected_regions_display
-                    ]
-
-                    # Show selection summary
-                    if st.session_state.selected_regions_price:
-                        st.success(f"✓ {len(st.session_state.selected_regions_price)} region(s) selected")
-                else:
-                    st.warning("No region data available")
-            except Exception as e:
-                st.error(f"Error loading regions: {str(e)}")
-
-    # Filter 3: Data Collection Period Dropdown
-    with col3:
         st.markdown("#### Data Collection Period")
         with st.spinner("Loading data collection periods..."):
             try:
                 period_df = get_data_collection_periods(client, TABLE_NAME)
 
                 if period_df is not None and not period_df.empty:
-                    # Create options with count badges
+                    # Create options with start date (Month, Year format)
                     period_options = []
                     for _, row in period_df.iterrows():
                         period = row['data_collection_period']
-                        count = row['survey_count']
-                        period_options.append(f"{period} ({count:,})")
+                        first_date = row['first_survey_date']
+
+                        # Format date as "Month, Year" (e.g., "June, 2023")
+                        if pd.notna(first_date):
+                            date_formatted = pd.to_datetime(first_date).strftime('%B, %Y')
+                            period_options.append(f"{period} - Start Date: {date_formatted}")
+                        else:
+                            period_options.append(period)
 
                     selected_periods_display = st.multiselect(
                         "Select data collection periods",
                         options=period_options,
                         default=[],
-                        help="🔍 Searchable dropdown - Type to filter periods by name. Shows survey count for each period.",
+                        help="🔍 Searchable dropdown - Type to filter periods by name. Shows start date for each period.",
                         label_visibility="collapsed",
                         placeholder="🔍 Search and select periods...",
                         key="price_period_filter"
                     )
 
-                    # Extract actual period names from display format
+                    # Extract actual period names from display format (before the " - ")
                     st.session_state.selected_periods_price = [
-                        opt.split(' (')[0] for opt in selected_periods_display
+                        opt.split(' - ')[0] for opt in selected_periods_display
                     ]
 
                     # Show selection summary
@@ -2930,6 +2901,166 @@ with tab2:
                     st.warning("No data collection period data available")
             except Exception as e:
                 st.error(f"Error loading data collection periods: {str(e)}")
+
+    # Filter 2: Country Dropdown - NOW IN COL2 AND DEPENDS ON SELECTED PERIODS
+    with col2:
+        st.markdown("#### Country")
+
+        # Check if periods are selected
+        if not st.session_state.selected_periods_price:
+            st.info("👈 Select a Data Collection Period first")
+            st.session_state.selected_countries_price = []
+        else:
+            with st.spinner("Loading countries..."):
+                try:
+                    # Use period-filtered country counts
+                    country_df = get_country_counts_by_period(
+                        client,
+                        TABLE_NAME,
+                        st.session_state.selected_periods_price
+                    )
+
+                    if country_df is not None and not country_df.empty:
+                        # Build country data (exclude Test Survey)
+                        country_data = []
+                        for _, row in country_df.iterrows():
+                            country = row['country']
+                            count = row['survey_count']
+                            # Exclude Test Survey
+                            if country != 'Test Survey':
+                                country_data.append((country, count))
+
+                        total_countries = len(country_data)
+
+                        if total_countries > 0:
+                            # Initialize checkboxes in session state (all selected by default)
+                            for country, count in country_data:
+                                checkbox_key = f"price_global_country_{country}"
+                                if checkbox_key not in st.session_state:
+                                    st.session_state[checkbox_key] = True
+
+                            # Count selected items from session state
+                            selected_count = sum(
+                                1 for country, _ in country_data
+                                if st.session_state.get(f"price_global_country_{country}", True)
+                            )
+                            excluded_count = total_countries - selected_count
+
+                            # Create expander with selection summary
+                            with st.expander(
+                                f"Select Countries ({selected_count}/{total_countries} selected)",
+                                expanded=False
+                            ):
+                                # Display excluded count inside expander
+                                if excluded_count > 0:
+                                    st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
+
+                                # Create checkboxes for each country
+                                selected_countries = []
+                                for country, count in country_data:
+                                    checkbox_key = f"price_global_country_{country}"
+
+                                    # Display checkbox
+                                    is_checked = st.checkbox(
+                                        f"{country} ({count:,})",
+                                        value=st.session_state.get(checkbox_key, True),
+                                        key=checkbox_key
+                                    )
+
+                                    # Add to selected list if checked
+                                    if is_checked:
+                                        selected_countries.append(country)
+
+                                # Update session state with selected countries
+                                st.session_state.selected_countries_price = selected_countries
+                        else:
+                            st.session_state.selected_countries_price = []
+                            st.info("No countries found for selected periods")
+                    else:
+                        st.session_state.selected_countries_price = []
+                        st.info("No country data available for selected periods")
+                except Exception as e:
+                    st.error(f"Error loading countries: {str(e)}")
+                    st.session_state.selected_countries_price = []
+
+    # Filter 3: Region Dropdown - NOW IN COL3 AND DEPENDS ON SELECTED PERIODS
+    with col3:
+        st.markdown("#### Region")
+
+        # Check if periods are selected
+        if not st.session_state.selected_periods_price:
+            st.info("👈 Select a Data Collection Period first")
+            st.session_state.selected_regions_price = []
+        else:
+            with st.spinner("Loading regions..."):
+                try:
+                    # Use period-filtered region counts
+                    region_df = get_region_counts_by_period(
+                        client,
+                        TABLE_NAME,
+                        st.session_state.selected_periods_price
+                    )
+
+                    if region_df is not None and not region_df.empty:
+                        # Build region data
+                        region_data = []
+                        for _, row in region_df.iterrows():
+                            region = row['region']
+                            count = row['survey_count']
+                            region_data.append((region, count))
+
+                        total_regions = len(region_data)
+
+                        if total_regions > 0:
+                            # Initialize checkboxes in session state (all selected by default)
+                            for region, count in region_data:
+                                checkbox_key = f"price_global_region_{region}"
+                                if checkbox_key not in st.session_state:
+                                    st.session_state[checkbox_key] = True
+
+                            # Count selected items from session state
+                            selected_count = sum(
+                                1 for region, _ in region_data
+                                if st.session_state.get(f"price_global_region_{region}", True)
+                            )
+                            excluded_count = total_regions - selected_count
+
+                            # Create expander with selection summary
+                            with st.expander(
+                                f"Select Regions ({selected_count}/{total_regions} selected)",
+                                expanded=False
+                            ):
+                                # Display excluded count inside expander
+                                if excluded_count > 0:
+                                    st.caption(f"🚫 {excluded_count} item{'s' if excluded_count != 1 else ''} excluded")
+
+                                # Create checkboxes for each region
+                                selected_regions = []
+                                for region, count in region_data:
+                                    checkbox_key = f"price_global_region_{region}"
+
+                                    # Display checkbox
+                                    is_checked = st.checkbox(
+                                        f"{region} ({count:,})",
+                                        value=st.session_state.get(checkbox_key, True),
+                                        key=checkbox_key
+                                    )
+
+                                    # Add to selected list if checked
+                                    if is_checked:
+                                        selected_regions.append(region)
+
+                                # Update session state with selected regions
+                                st.session_state.selected_regions_price = selected_regions
+                        else:
+                            st.session_state.selected_regions_price = []
+                            st.info("No regions found for selected periods")
+                    else:
+                        st.session_state.selected_regions_price = []
+                        st.info("No region data available for selected periods")
+                except Exception as e:
+                    st.error(f"Error loading regions: {str(e)}")
+                    st.session_state.selected_regions_price = []
 
     # Default State Message
     st.markdown("<br>", unsafe_allow_html=True)

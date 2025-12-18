@@ -209,29 +209,163 @@ def get_grouped_counts(_client, table_name, group_by_column, sort_desc=True):
 
 
 @st.cache_data(ttl=600)
+def get_country_counts_by_period(_client, table_name, selected_periods):
+    """
+    Get country counts filtered by selected data collection periods.
+    
+    Args:
+        _client: BigQuery client instance
+        table_name: Name of the table
+        selected_periods: List of selected data collection periods
+    
+    Returns:
+        pandas DataFrame with country counts for selected periods
+    """
+    if not selected_periods:
+        return None
+    
+    periods_str = "', '".join(selected_periods)
+    
+    query = f"""
+        SELECT
+            country,
+            COUNT(DISTINCT form_case__case_id) as survey_count
+        FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+        WHERE survey_date IS NOT NULL
+            AND survey_date < CURRENT_DATE()
+            AND data_collection_period IN ('{periods_str}')
+            AND country IS NOT NULL
+            AND country != ''
+        GROUP BY country
+        ORDER BY survey_count DESC
+    """
+    
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting country counts by period: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def get_region_counts_by_period(_client, table_name, selected_periods):
+    """
+    Get region counts filtered by selected data collection periods.
+    
+    Args:
+        _client: BigQuery client instance
+        table_name: Name of the table
+        selected_periods: List of selected data collection periods
+    
+    Returns:
+        pandas DataFrame with region counts for selected periods
+    """
+    if not selected_periods:
+        return None
+    
+    periods_str = "', '".join(selected_periods)
+    
+    query = f"""
+        SELECT
+            region,
+            COUNT(DISTINCT form_case__case_id) as survey_count
+        FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+        WHERE survey_date IS NOT NULL
+            AND survey_date < CURRENT_DATE()
+            AND data_collection_period IN ('{periods_str}')
+            AND region IS NOT NULL
+            AND region != ''
+        GROUP BY region
+        ORDER BY survey_count DESC
+    """
+    
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting region counts by period: {str(e)}")
+        return None
+
+
+
+@st.cache_data(ttl=60)
+def get_sector_counts_by_period(_client, table_name, selected_periods):
+    """
+    Get sector counts filtered by selected data collection periods.
+    
+    Args:
+        _client: BigQuery client instance
+        table_name: Name of the table
+        selected_periods: List of selected data collection periods
+    
+    Returns:
+        pandas DataFrame with sector counts for selected periods
+    """
+    if not selected_periods:
+        return None
+    
+    periods_str = "', '".join(selected_periods)
+    
+    query = f"""
+        SELECT
+            sector,
+            COUNT(DISTINCT form_case__case_id) as survey_count
+        FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+        WHERE survey_date IS NOT NULL
+            AND survey_date < CURRENT_DATE()
+            AND data_collection_period IN ('{periods_str}')
+            AND country IS NOT NULL
+            AND country != ''
+            AND region IS NOT NULL
+            AND region != ''
+            AND sector IS NOT NULL
+            AND sector != ''
+        GROUP BY sector
+        ORDER BY survey_count DESC
+    """
+    
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error getting sector counts by period: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=60)  # Reduced to 60 seconds for testing
 def get_data_collection_periods(_client, table_name):
     """
-    Get data collection periods with survey counts.
+    Get data collection periods with survey counts and start dates.
+    Uses the same filtering logic as get_selected_periods_summary() to ensure consistency.
 
     Args:
         _client: BigQuery client instance
         table_name: Name of the table
 
     Returns:
-        pandas DataFrame with data collection periods and counts
+        pandas DataFrame with data collection periods, counts, and start dates
     """
+    # Build WHERE clauses - same as get_selected_periods_summary()
+    where_clauses = []
+    where_clauses.append("data_collection_period IS NOT NULL")
+    where_clauses.append("data_collection_period != 'Click here to select...'")
+    where_clauses.append("survey_date IS NOT NULL")
+    where_clauses.append("survey_date < CURRENT_DATE()")
+    where_clauses.append("country IS NOT NULL")
+    where_clauses.append("country != ''")
+    where_clauses.append("region IS NOT NULL")
+    where_clauses.append("region != ''")
+    
+    where_clause = " AND ".join(where_clauses)
+    
     query = f"""
         SELECT
             data_collection_period,
-            COUNT(DISTINCT form_case__case_id) as survey_count
+            COUNT(DISTINCT form_case__case_id) as survey_count,
+            MIN(survey_date) as first_survey_date
         FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
-        WHERE data_collection_period IS NOT NULL
-            AND data_collection_period NOT LIKE '%Click here%'
-            AND data_collection_period NOT LIKE '%select%'
-            AND TRIM(data_collection_period) != ''
-            AND LENGTH(data_collection_period) > 1
-            AND survey_date IS NOT NULL
-            AND survey_date < CURRENT_DATE()
+        WHERE {where_clause}
         GROUP BY data_collection_period
         ORDER BY data_collection_period DESC
     """
@@ -245,7 +379,7 @@ def get_data_collection_periods(_client, table_name):
 
 
 @st.cache_data(ttl=600)
-def get_selected_periods_summary(_client, table_name, selected_periods):
+def get_selected_periods_summary(_client, table_name, selected_periods, selected_countries=None, selected_regions=None):
     """
     Get summary table for selected data collection periods.
     
@@ -253,6 +387,8 @@ def get_selected_periods_summary(_client, table_name, selected_periods):
         _client: BigQuery client instance
         table_name: Name of the table
         selected_periods: List of selected data collection periods
+        selected_countries: Optional list of selected countries
+        selected_regions: Optional list of selected regions
     
     Returns:
         pandas DataFrame with period summaries
@@ -263,6 +399,29 @@ def get_selected_periods_summary(_client, table_name, selected_periods):
     # Build the WHERE clause for selected periods
     periods_str = "', '".join(selected_periods)
     
+    # Build WHERE clauses
+    where_clauses = []
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+    where_clauses.append("data_collection_period != 'Click here to select...'")
+    where_clauses.append("survey_date IS NOT NULL")
+    where_clauses.append("survey_date < CURRENT_DATE()")
+    where_clauses.append("country IS NOT NULL")
+    where_clauses.append("country != ''")
+    where_clauses.append("region IS NOT NULL")
+    where_clauses.append("region != ''")
+    
+    # Add country filter if provided
+    if selected_countries:
+        countries_str = "', '".join(selected_countries)
+        where_clauses.append(f"country IN ('{countries_str}')")
+    
+    # Add region filter if provided
+    if selected_regions:
+        regions_str = "', '".join(selected_regions)
+        where_clauses.append(f"region IN ('{regions_str}')")
+    
+    where_clause = " AND ".join(where_clauses)
+    
     query = f"""
         SELECT
             data_collection_period,
@@ -270,10 +429,7 @@ def get_selected_periods_summary(_client, table_name, selected_periods):
             MAX(survey_date) as last_survey_date,
             COUNT(DISTINCT form_case__case_id) as survey_count
         FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
-        WHERE data_collection_period IN ('{periods_str}')
-            AND data_collection_period != 'Click here to select...'
-            AND survey_date IS NOT NULL
-            AND survey_date < CURRENT_DATE()
+        WHERE {where_clause}
         GROUP BY data_collection_period
         ORDER BY data_collection_period DESC
     """
@@ -380,6 +536,12 @@ def fetch_facility_statistics(_client, table_name, filters):
     # Add date validation filters to exclude invalid records
     where_clauses.append("survey_date IS NOT NULL")
     where_clauses.append("survey_date < CURRENT_DATE()")
+    
+    # Exclude NULL/empty country and region to match dropdown filters
+    where_clauses.append("country IS NOT NULL")
+    where_clauses.append("country != ''")
+    where_clauses.append("region IS NOT NULL")
+    where_clauses.append("region != ''")
     
     where_clause = " AND ".join(where_clauses)
     
