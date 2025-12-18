@@ -3256,21 +3256,50 @@ def get_median_price_by_type(_client, table_name, filters):
     where_clauses.append("insulin_type IS NOT NULL")
     where_clauses.append("insulin_type != '---'")
 
+    # Price filters - only include records with valid prices (but allow 0 prices)
+    where_clauses.append("insulin_standard_price_local IS NOT NULL")
+
     # Out-of-pocket payment filter
     where_clauses.append("(insulin_out_of_pocket = 'Yes' OR insulin_out_of_pocket = 'Some people pay out of pocket')")
 
     where_clause = " AND ".join(where_clauses)
 
     query = f"""
+    WITH base_data AS (
+        SELECT
+            insulin_type,
+            insulin_type_order,
+            insulin_standard_price_local,
+            insulin_standard_price_usd
+        FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+        WHERE {where_clause}
+    ),
+    aggregated AS (
+        SELECT
+            insulin_type,
+            ANY_VALUE(insulin_type_order) as insulin_type_order,
+            COUNT(insulin_standard_price_local) as count_local,
+            COUNT(insulin_standard_price_usd) as count_usd,
+            APPROX_QUANTILES(insulin_standard_price_local, 100) as quantiles_local,
+            APPROX_QUANTILES(insulin_standard_price_usd, 100) as quantiles_usd
+        FROM base_data
+        GROUP BY insulin_type
+    )
     SELECT
         insulin_type,
         insulin_type_order,
-        APPROX_QUANTILES(insulin_standard_price_local, 100)[OFFSET(50)] as median_price_local,
-        APPROX_QUANTILES(insulin_standard_price_usd, 100)[OFFSET(50)] as median_price_usd,
-        COUNT(1) as product_count
-    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
-    WHERE {where_clause}
-    GROUP BY insulin_type, insulin_type_order
+        CASE
+            WHEN MOD(count_local, 2) = 1 THEN quantiles_local[OFFSET(50)]
+            WHEN MOD(count_local, 2) = 0 AND count_local >= 100 THEN quantiles_local[OFFSET(50)]
+            ELSE (quantiles_local[OFFSET(49)] + quantiles_local[OFFSET(51)]) / 2
+        END as median_price_local,
+        CASE
+            WHEN MOD(count_usd, 2) = 1 THEN quantiles_usd[OFFSET(50)]
+            WHEN MOD(count_usd, 2) = 0 AND count_usd >= 100 THEN quantiles_usd[OFFSET(50)]
+            ELSE (quantiles_usd[OFFSET(49)] + quantiles_usd[OFFSET(51)]) / 2
+        END as median_price_usd,
+        count_local as product_count
+    FROM aggregated
     ORDER BY insulin_type_order ASC
     """
 
@@ -3322,34 +3351,59 @@ def get_median_price_by_type_levelcare(_client, table_name, filters):
         regions_str = "', '".join(filters['region'])
         where_clauses.append(f"region IN ('{regions_str}')")
 
-    # Public sector filter
-    where_clauses.append("sector LIKE '%Public%'")
-
-    # Insulin type filters
-    where_clauses.append("insulin_type IS NOT NULL")
+    # Insulin type filters - EXCLUDE insulin_type EQUALS "---"
     where_clauses.append("insulin_type != '---'")
 
-    # Level of care filters
-    where_clauses.append("level_of_care IS NOT NULL")
-    where_clauses.append("level_of_care != 'NULL'")
-    where_clauses.append("level_of_care != '---'")
+    # Public sector filter - INCLUDE Sector CONTAINS "Public"
+    where_clauses.append("LOWER(sector) LIKE '%public%'")
 
-    # Out-of-pocket payment filter
+    # Level of care filters - EXCLUDE level_of_care EQUALS "NULL" OR "---"
+    where_clauses.append("(level_of_care IS NOT NULL AND level_of_care != 'NULL' AND level_of_care != '---')")
+
+    # Out-of-pocket payment filter - INCLUDE insulin_out_of_pocket EQUALS "Yes" OR "Some people pay out of pocket"
     where_clauses.append("(insulin_out_of_pocket = 'Yes' OR insulin_out_of_pocket = 'Some people pay out of pocket')")
 
     where_clause = " AND ".join(where_clauses)
 
     query = f"""
+    WITH base_data AS (
+        SELECT
+            insulin_type,
+            insulin_type_order,
+            level_of_care,
+            insulin_standard_price_local,
+            insulin_standard_price_usd
+        FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+        WHERE {where_clause}
+    ),
+    aggregated AS (
+        SELECT
+            insulin_type,
+            insulin_type_order,
+            level_of_care,
+            COUNT(insulin_standard_price_local) as count_local,
+            COUNT(insulin_standard_price_usd) as count_usd,
+            APPROX_QUANTILES(insulin_standard_price_local, 100) as quantiles_local,
+            APPROX_QUANTILES(insulin_standard_price_usd, 100) as quantiles_usd
+        FROM base_data
+        GROUP BY insulin_type, insulin_type_order, level_of_care
+    )
     SELECT
         insulin_type,
         insulin_type_order,
         level_of_care,
-        APPROX_QUANTILES(insulin_standard_price_local, 100)[OFFSET(50)] as median_price_local,
-        APPROX_QUANTILES(insulin_standard_price_usd, 100)[OFFSET(50)] as median_price_usd,
-        COUNT(1) as product_count
-    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
-    WHERE {where_clause}
-    GROUP BY insulin_type, insulin_type_order, level_of_care
+        CASE
+            WHEN MOD(count_local, 2) = 1 THEN quantiles_local[OFFSET(50)]
+            WHEN MOD(count_local, 2) = 0 AND count_local >= 100 THEN quantiles_local[OFFSET(50)]
+            ELSE (quantiles_local[OFFSET(49)] + quantiles_local[OFFSET(51)]) / 2
+        END as median_price_local,
+        CASE
+            WHEN MOD(count_usd, 2) = 1 THEN quantiles_usd[OFFSET(50)]
+            WHEN MOD(count_usd, 2) = 0 AND count_usd >= 100 THEN quantiles_usd[OFFSET(50)]
+            ELSE (quantiles_usd[OFFSET(49)] + quantiles_usd[OFFSET(51)]) / 2
+        END as median_price_usd,
+        count_local as product_count
+    FROM aggregated
     ORDER BY insulin_type_order ASC, level_of_care ASC
     """
 
@@ -3358,6 +3412,66 @@ def get_median_price_by_type_levelcare(_client, table_name, filters):
         return df
     except Exception as e:
         st.error(f"Error getting median price by type and level of care: {str(e)}")
+        return None
+
+
+@st.cache_data(ttl=600)
+def debug_level_of_care_values(_client, table_name, filters):
+    """
+    Debug function to see what level_of_care values exist in the data.
+    
+    Args:
+        _client: BigQuery client
+        table_name: Table name (adl_surveys_repeat)
+        filters (dict): Filters (data_collection_period, country, region)
+        
+    Returns:
+        pandas DataFrame showing level_of_care distribution
+    """
+    if not filters.get('data_collection_period'):
+        return None
+    
+    # Build WHERE clause with minimal filters
+    where_clauses = ["1=1"]
+    
+    # Add data collection period filter
+    periods = filters['data_collection_period']
+    periods_str = "', '".join(periods)
+    where_clauses.append(f"data_collection_period IN ('{periods_str}')")
+    
+    # Add country filter (optional)
+    if filters.get('country'):
+        countries_str = "', '".join(filters['country'])
+        where_clauses.append(f"country IN ('{countries_str}')")
+    
+    # Add region filter (optional)
+    if filters.get('region'):
+        regions_str = "', '".join(filters['region'])
+        where_clauses.append(f"region IN ('{regions_str}')")
+    
+    where_clause = " AND ".join(where_clauses)
+    
+    query = f"""
+    SELECT 
+        level_of_care,
+        sector,
+        insulin_type,
+        COUNT(*) as record_count,
+        COUNT(DISTINCT form_case__case_id) as facility_count,
+        AVG(insulin_standard_price_local) as avg_price,
+        MIN(insulin_standard_price_local) as min_price,
+        MAX(insulin_standard_price_local) as max_price
+    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{table_name}`
+    WHERE {where_clause}
+    GROUP BY level_of_care, sector, insulin_type
+    ORDER BY level_of_care, sector, insulin_type
+    """
+    
+    try:
+        df = _client.query(query).to_dataframe()
+        return df
+    except Exception as e:
+        st.error(f"Error in debug query: {str(e)}")
         return None
 
 

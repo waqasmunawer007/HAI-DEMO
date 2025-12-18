@@ -78,6 +78,7 @@ try:
         get_price_sectors,
         get_median_price_by_type,
         get_median_price_by_type_levelcare,
+        # debug_level_of_care_values,
         get_price_by_inn,
         get_price_by_brand_human,
         get_price_by_brand_analogue,
@@ -3268,6 +3269,20 @@ with tab2:
             chart_df = get_median_price_by_type_levelcare(client, config.TABLES["surveys_repeat"], price_filters)
 
             if chart_df is not None and not chart_df.empty:
+                # Debug: Show final calculated data
+                with st.expander("📊 Debug: View final median calculations", expanded=False):
+                    st.write("**Final chart data with median calculations:**")
+                    st.dataframe(chart_df, use_container_width=True)
+
+                    st.write("**Unique levels of care in final data:**")
+                    st.write(chart_df['level_of_care'].unique().tolist())
+
+                    st.write("**Data grouped by level_of_care:**")
+                    for level in sorted(chart_df['level_of_care'].unique()):
+                        level_data = chart_df[chart_df['level_of_care'] == level]
+                        st.write(f"**{level}:** {len(level_data)} insulin types")
+                        st.dataframe(level_data[['insulin_type', 'median_price_local', 'product_count']])
+
                 # Get unique levels of care dynamically from the data
                 unique_levels = sorted(chart_df['level_of_care'].unique())
 
@@ -4427,29 +4442,23 @@ with tab2:
                 reasons_free_df = get_reasons_insulin_free(client, config.TABLES["surveys_repeat"], free_filters)
 
                 if reasons_free_df is not None and not reasons_free_df.empty:
-                    # Calculate percentages
-                    total_products = reasons_free_df['product_count'].sum()
-                    reasons_free_df['percentage'] = (reasons_free_df['product_count'] / total_products * 100).round(2)
+                    # Ensure product_count is numeric (convert Int64 to int)
+                    reasons_free_df['product_count'] = reasons_free_df['product_count'].astype(int)
 
-                    # Create pie chart
-                    fig_reasons_free = px.pie(
-                        reasons_free_df,
-                        values='percentage',
-                        names='insulin_free_reason',
-                        title='',
-                        color_discrete_sequence=px.colors.qualitative.Set3
-                    )
+                    # Create pie chart using go.Pie
+                    import plotly.graph_objects as go
 
-                    # Update traces for better hover info
-                    fig_reasons_free.update_traces(
+                    fig_reasons_free = go.Figure(data=[go.Pie(
+                        labels=reasons_free_df['insulin_free_reason'].tolist(),
+                        values=reasons_free_df['product_count'].tolist(),
                         textposition='inside',
                         textinfo='percent',
                         hovertemplate='<b>%{label}</b><br>' +
-                                      'Percentage: %{value:.1f}%<br>' +
-                                      'Reported Products(n): %{customdata[0]:,}<br>' +
+                                      'Percentage: %{percent}<br>' +
+                                      'Reported Products(n): %{value:,}<br>' +
                                       '<extra></extra>',
-                        customdata=reasons_free_df[['product_count']].values
-                    )
+                        marker=dict(colors=px.colors.qualitative.Set3)
+                    )])
 
                     # Update layout
                     fig_reasons_free.update_layout(
@@ -4503,29 +4512,23 @@ with tab2:
                 reasons_subsidised_df = get_reasons_not_full_price(client, config.TABLES["surveys_repeat"], free_filters)
 
                 if reasons_subsidised_df is not None and not reasons_subsidised_df.empty:
-                    # Calculate percentages
-                    total_products = reasons_subsidised_df['product_count'].sum()
-                    reasons_subsidised_df['percentage'] = (reasons_subsidised_df['product_count'] / total_products * 100).round(2)
+                    # Ensure product_count is numeric (convert Int64 to int)
+                    reasons_subsidised_df['product_count'] = reasons_subsidised_df['product_count'].astype(int)
 
-                    # Create pie chart
-                    fig_reasons_subsidised = px.pie(
-                        reasons_subsidised_df,
-                        values='percentage',
-                        names='insulin_subsidised_reason',
-                        title='',
-                        color_discrete_sequence=px.colors.qualitative.Pastel
-                    )
+                    # Create pie chart using go.Pie
+                    import plotly.graph_objects as go
 
-                    # Update traces for better hover info
-                    fig_reasons_subsidised.update_traces(
+                    fig_reasons_subsidised = go.Figure(data=[go.Pie(
+                        labels=reasons_subsidised_df['insulin_subsidised_reason'].tolist(),
+                        values=reasons_subsidised_df['product_count'].tolist(),
                         textposition='inside',
                         textinfo='percent',
                         hovertemplate='<b>%{label}</b><br>' +
-                                      'Percentage: %{value:.1f}%<br>' +
-                                      'Reported Products(n): %{customdata[0]:,}<br>' +
+                                      'Percentage: %{percent}<br>' +
+                                      'Reported Products(n): %{value:,}<br>' +
                                       '<extra></extra>',
-                        customdata=reasons_subsidised_df[['product_count']].values
-                    )
+                        marker=dict(colors=px.colors.qualitative.Pastel)
+                    )])
 
                     # Update layout
                     fig_reasons_subsidised.update_layout(
