@@ -362,6 +362,117 @@ with tab1:
     # Data Selectors Section
     st.markdown('<div class="section-header"><h3>Data Selectors</h3></div>', unsafe_allow_html=True)
 
+    # DEBUG: Show all country records for analysis
+    with st.expander("🔍 DEBUG: View All Country Survey Records", expanded=False):
+        st.markdown("**Debug Information: All survey records grouped by country**")
+        try:
+            debug_query = f"""
+            SELECT
+                country,
+                COUNT(DISTINCT form_case__case_id) as total_surveys,
+                COUNT(DISTINCT CASE WHEN survey_date < CURRENT_DATE() THEN form_case__case_id END) as surveys_before_today,
+                COUNT(DISTINCT CASE WHEN survey_date >= CURRENT_DATE() THEN form_case__case_id END) as surveys_today_or_future,
+                MIN(survey_date) as first_survey_date,
+                MAX(survey_date) as last_survey_date,
+                COUNT(DISTINCT CASE WHEN EXTRACT(YEAR FROM survey_date) >= 2025 THEN form_case__case_id END) as surveys_in_2025_plus
+            FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{TABLE_NAME}`
+            WHERE survey_date IS NOT NULL
+            GROUP BY country
+            ORDER BY total_surveys DESC
+            """
+            debug_df = client.query(debug_query).to_dataframe()
+
+            if not debug_df.empty:
+                # Display country summary table
+                st.dataframe(
+                    debug_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "country": "Country",
+                        "total_surveys": "Total Surveys",
+                        "surveys_before_today": "Surveys < Today",
+                        "surveys_today_or_future": "Surveys >= Today",
+                        "first_survey_date": "First Survey",
+                        "last_survey_date": "Last Survey",
+                        "surveys_in_2025_plus": "2025+ Surveys"
+                    }
+                )
+                st.caption(f"**Total countries:** {len(debug_df)} | **Today's date:** {pd.Timestamp.now().date()}")
+
+                # Add country selector to view detailed records
+                st.markdown("---")
+                st.markdown("**📋 View Individual Survey Records for a Country:**")
+
+                selected_country = st.selectbox(
+                    "Select a country to view all surveys:",
+                    options=[""] + debug_df['country'].tolist(),
+                    format_func=lambda x: "Select a country..." if x == "" else x
+                )
+
+                if selected_country:
+                    st.markdown(f"### Distinct Survey Records for: **{selected_country}**")
+
+                    # Query distinct survey records for the selected country
+                    detail_query = f"""
+                    SELECT DISTINCT
+                        form_case__case_id,
+                        survey_date,
+                        region,
+                        sector,
+                        level_of_care,
+                        data_collection_period,
+                        EXTRACT(YEAR FROM survey_date) as survey_year,
+                        CASE
+                            WHEN survey_date < CURRENT_DATE() THEN 'Valid (< Today)'
+                            WHEN survey_date >= CURRENT_DATE() THEN 'Invalid (>= Today)'
+                        END as date_status
+                    FROM `{config.GCP_PROJECT_ID}.{config.BQ_DATASET}.{TABLE_NAME}`
+                    WHERE country = '{selected_country}'
+                        AND survey_date IS NOT NULL
+                    ORDER BY survey_date DESC, form_case__case_id
+                    """
+
+                    detail_df = client.query(detail_query).to_dataframe()
+
+                    if not detail_df.empty:
+                        st.dataframe(
+                            detail_df,
+                            use_container_width=True,
+                            hide_index=True,
+                            column_config={
+                                "form_case__case_id": "Survey ID",
+                                "survey_date": "Survey Date",
+                                "region": "Region",
+                                "sector": "Sector",
+                                "level_of_care": "Level of Care",
+                                "data_collection_period": "Period",
+                                "survey_year": "Year",
+                                "date_status": "Date Status"
+                            }
+                        )
+
+                        # Summary stats for selected country
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Total Records", len(detail_df))
+                        with col2:
+                            valid_count = len(detail_df[detail_df['date_status'] == 'Valid (< Today)'])
+                            st.metric("Valid Records", valid_count)
+                        with col3:
+                            invalid_count = len(detail_df[detail_df['date_status'] == 'Invalid (>= Today)'])
+                            st.metric("Invalid Records", invalid_count, delta=f"-{invalid_count}" if invalid_count > 0 else None, delta_color="inverse")
+                        with col4:
+                            future_years = detail_df[detail_df['survey_year'] >= 2025]
+                            st.metric("2025+ Records", len(future_years))
+                    else:
+                        st.info(f"No survey records found for {selected_country}")
+
+            else:
+                st.info("No debug data available")
+        except Exception as e:
+            st.error(f"Debug query error: {str(e)}")
+
     # Create three columns for the filter dropdowns
     col1, col2, col3 = st.columns(3)
 
